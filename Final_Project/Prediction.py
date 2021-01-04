@@ -1,159 +1,136 @@
+from tensorflow import keras
+import tensorflow as tf
 import numpy as np
 import pandas as pd
-from tensorflow import keras
-from tensorflow.keras.layers import Dense, LSTM, Dropout, RepeatVector, TimeDistributed
-
-from tensorflow.keras import layers
+from sklearn.preprocessing import StandardScaler
 from matplotlib import pyplot as plt
 
-TIME_STEPS = 288
-#class Compare():
-# Generated training sequences for use in the model.
-def create_sequences(values, time_steps=TIME_STEPS):
-    output = []
-    for i in range(len(values) - time_steps):
-        output.append(values[i : (i + time_steps)])
-    return np.stack(output)
+import plotly.graph_objects as go
 
-def Ploting(data_to_plot):
-	fig, ax = plt.subplots()
-	data_to_plot.plot(legend=False, ax=ax)
-	plt.show()
+np.random.seed(1)
+tf.random.set_seed(1)
 
-def normalize_test(values, mean, std):
-    values -= mean
-    values /= std
-    return values
+from tensorflow.keras.models import Sequential
+from tensorflow.keras.layers import Dense, LSTM, Dropout, RepeatVector, TimeDistributed
 
-def Model_creation(x_train):
-	model = keras.Sequential(
-    [
-        layers.Input(shape=(x_train.shape[1], x_train.shape[2])),
-        layers.Conv1D(
-            filters=32, kernel_size=7, padding="same", strides=2, activation="relu"
-        ),
-        layers.Dropout(rate=0.2),
-        layers.Conv1D(
-            filters=16, kernel_size=7, padding="same", strides=2, activation="relu"
-        ),
-        layers.Conv1DTranspose(
-            filters=16, kernel_size=7, padding="same", strides=2, activation="relu"
-        ),
-        layers.Dropout(rate=0.2),
-        layers.Conv1DTranspose(
-            filters=32, kernel_size=7, padding="same", strides=2, activation="relu"
-        ),
-        layers.Conv1DTranspose(filters=1, kernel_size=7, padding="same"),
-    ]
-	)
+from compare import Compare
+
+import datetime
+def Timeset():
+  y=int(input("\n \t year : "))
+  m=int(input("\n \t month : "))
+  d = int(input("\n \t day : "))
+  start= datetime.datetime(y,m,d)
+  end = datetime.datetime(y,m,d+1)
+  return start, end
+
+def Model_dev(X_train):
+	model = Sequential()
+	model.add(LSTM(128, input_shape=(X_train.shape[1], X_train.shape[2])))
+	model.add(Dropout(rate=0.2))
+	model.add(RepeatVector(X_train.shape[1]))
+	model.add(LSTM(128, return_sequences=True))
+	model.add(Dropout(rate=0.2))
+	model.add(TimeDistributed(Dense(X_train.shape[2])))
+	model.compile(optimizer='adam', loss='mae')
 	return model
 
+def Plot_graph(df, test_score_df, Anomaly):
+
+  fig = go.Figure()
+  fig.add_trace(go.Scatter(x=df['timestamp'], y=df['value'], name='Value'))
+  fig.update_layout(showlegend=True, title='NAB/data/realTwitts/Twitter_volume_AAPL.csv')
+  fig.show()
+
+  fig = go.Figure()
+  fig.add_trace(go.Scatter(x=test_score_df['timestamp'], y=test_score_df['loss'], name='Test loss'))
+  fig.add_trace(go.Scatter(x=test_score_df['timestamp'], y=test_score_df['threshold'], name='Threshold'))
+  fig.update_layout(showlegend=True, title='Test loss vs. Threshold')
+  fig.show()
+
+  fig = go.Figure()
+  fig.add_trace(go.Scatter(x=test_score_df['timestamp'], y=scaler.inverse_transform(test_score_df['value']), name='Value'))
+  fig.add_trace(go.Scatter(x=anomalies['timestamp'], y=scaler.inverse_transform(anomalies['value']), mode='markers', name='Anomaly'))
+  fig.update_layout(showlegend=True, title='Detected anomalies')
+  fig.show()
+
+def Create_anomaly(anomalies):
+  print(anomalies)
+  Anomaly = pd.DataFrame(data=anomalies)
+  print(Anomaly.head())
 
 
-df_small_noise = pd.read_csv("data/realTweets/Twitter_volume_AMZN.csv",index_col=0)
+df = pd.read_csv('data/realTweets/Twitter_volume_AMZN.csv')
+df = df[['timestamp', 'value']]
+df['timestamp'] = pd.to_datetime(df['timestamp'])
+#df['timestamp'].min(), df['timestamp'].max()
 
-#df_daily_jumpsup_url_suffix = "/content/Twitter_volume_AMZN.csv"
+#
 
-#df_daily_jumpsup = pd.read_csv("/content/Twitter_volume_AAPL.csv", index_col=0)
-df_daily_jumpsup =pd.read_csv("data/realTweets/Twitter_volume_AAPL.csv", index_col=0)
-print("Small noice \n",df_small_noise.head())
+start, end = Timeset()
+train, test = df.loc[df['timestamp'] <= start], df.loc[df['timestamp'] > end]
+train.shape, test.shape
 
-print("Daily jumps",df_daily_jumpsup.head())
+scaler = StandardScaler()
+scaler = scaler.fit(train[['value']])
 
-# Ploting of data
-Ploting(df_small_noise)
-Ploting(df_daily_jumpsup)
+train['value'] = scaler.transform(train[['value']])
+test['value'] = scaler.transform(test[['value']])
 
-# Normalize and save the mean and std we get,
-# for normalizing test data.
-training_mean = df_small_noise.mean()
-training_std = df_small_noise.std()
-df_training_value = (df_small_noise - training_mean) / training_std
-print("Number of training samples:", len(df_training_value),"\n")
-#print("\n \t Mean Value = ",training_mean,"\n \tTraining Std = ",training_std, "\n \tTraining Value",df_training_value)
-print("\n \t Mean Value = ",training_mean,"\n \tTraining Std = ",training_std)
-print("\n Shape = ",df_training_value.shape)
+TIME_STEPS=288
 
-x_train = create_sequences(df_training_value.values)
-print("Training input shape: ", x_train.shape)
-print("\n \t Type of train : ",type(x_train))
-print("\n  \t Print : \n",x_train)
-print("\n \t Shape = ",df_training_value.shape)
+def create_sequences(X, y, time_steps=TIME_STEPS):
+    Xs, ys = [], []
+    for i in range(len(X)-time_steps):
+        Xs.append(X.iloc[i:(i+time_steps)].values)
+        ys.append(y.iloc[i+time_steps])
+    
+    return np.array(Xs), np.array(ys)
 
-# Create model
-model = Model_creation(x_train)
-print("\n \n MODEL \t ",model)
+X_train, y_train = create_sequences(train[['value']], train['value'])
+X_test, y_test = create_sequences(test[['value']], test['value'])
 
-model.compile(optimizer=keras.optimizers.Adam(learning_rate=0.001), loss="mse")
-model.summary()
+print(f'Training shape: {X_train.shape}')
+print(f'Testing shape: {X_test.shape}')
 
-history = model.fit(
-    x_train,
-    x_train,
-    epochs=4,
-    batch_size=128,
-    validation_split=0.1,
-    callbacks=[
-        keras.callbacks.EarlyStopping(monitor="val_loss", patience=5, mode="min")
-    ],
-)
+model = Model_dev(X_train)
+model.summary() 
 
-plt.plot(history.history["loss"], label="Training Loss")
-plt.plot(history.history["val_loss"], label="Validation Loss")
-plt.legend()
-plt.show()
+history = model.fit(X_train, y_train, epochs=4, batch_size=32, validation_split=0.1,
+                    callbacks=[keras.callbacks.EarlyStopping(monitor='val_loss', patience=3, mode='min')], shuffle=False)
 
-# Get train MAE loss.
-x_train_pred = model.predict(x_train)
-train_mae_loss = np.mean(np.abs(x_train_pred - x_train), axis=1)
+plt.plot(history.history['loss'], label='Training loss')
+plt.plot(history.history['val_loss'], label='Validation loss')
+plt.legend();
+
+model.evaluate(X_test, y_test)
+
+X_train_pred = model.predict(X_train, verbose=0)
+train_mae_loss = np.mean(np.abs(X_train_pred - X_train), axis=1)
 
 plt.hist(train_mae_loss, bins=50)
-plt.xlabel("Train MAE loss")
-plt.ylabel("No of samples")
-plt.show()
+plt.xlabel('Train MAE loss')
+plt.ylabel('Number of Samples');
 
-# Get reconstruction loss threshold.
 threshold = np.max(train_mae_loss)
-print("Reconstruction error threshold: ", threshold)
-# Checking how the first sequence is learnt
-plt.plot(x_train[0])
-plt.plot(x_train_pred[0])
-plt.show()
+print(f'Reconstruction error threshold: {threshold}')
 
-df_test_value = (df_daily_jumpsup - training_mean) / training_std
-fig, ax = plt.subplots()
-df_test_value.plot(legend=False, ax=ax)
-plt.show()
-
-
-# Create sequences from test values.
-x_test = create_sequences(df_test_value.values)
-print("Test input shape: ", x_test.shape)
-
-# Get test MAE loss.
-x_test_pred = model.predict(x_test)
-test_mae_loss = np.mean(np.abs(x_test_pred - x_test), axis=1)
-test_mae_loss = test_mae_loss.reshape((-1))
+X_test_pred = model.predict(X_test, verbose=0)
+test_mae_loss = np.mean(np.abs(X_test_pred-X_test), axis=1)
 
 plt.hist(test_mae_loss, bins=50)
-plt.xlabel("test MAE loss")
-plt.ylabel("No of samples")
-plt.show()
+plt.xlabel('Test MAE loss')
+plt.ylabel('Number of samples');
 
-# Detect all the samples which are anomalies.
-anomalies = test_mae_loss > threshold
-print("Number of anomaly samples: ", np.sum(anomalies))
-print("Indices of anomaly samples: ", np.where(anomalies))
+test_score_df = pd.DataFrame(test[TIME_STEPS:])
+test_score_df['loss'] = test_mae_loss
+test_score_df['threshold'] = threshold
+test_score_df['anomaly'] = test_score_df['loss'] > test_score_df['threshold']
+test_score_df['value'] = test[TIME_STEPS:]['value']
 
-# data i is an anomaly if samples [(i - timesteps + 1) to (i)] are anomalies
-anomalous_data_indices = []
-for data_idx in range(TIME_STEPS - 1, len(df_test_value) - TIME_STEPS + 1):
-    if np.all(anomalies[data_idx - TIME_STEPS + 1 : data_idx]):
-        anomalous_data_indices.append(data_idx)
 
-df_subset = df_daily_jumpsup.iloc[anomalous_data_indices]
-fig, ax = plt.subplots()
-df_daily_jumpsup.plot(legend=False, ax=ax)
-df_subset.plot(legend=False, ax=ax, color="r")
-plt.show()
 
+anomalies = test_score_df.loc[test_score_df['anomaly'] == True]
+#anomalies.shape
+Anomaly = Create_anomaly(anomalies)
+Plot_graph(df, test_score_df, Anomaly)
