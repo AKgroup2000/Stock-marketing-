@@ -6,7 +6,7 @@ from tensorflow.keras.layers import Dense, LSTM, Dropout, RepeatVector, TimeDist
 from tensorflow.keras import layers
 from matplotlib import pyplot as plt
 
-TIME_STEPS = 288
+TIME_STEPS = 200
 #class Compare():
 # Generated training sequences for use in the model.
 def create_sequences(values, time_steps=TIME_STEPS):
@@ -91,7 +91,7 @@ history = model.fit(
     x_train,
     x_train,
     epochs=4,
-    batch_size=128,
+    batch_size=256,
     validation_split=0.1,
     callbacks=[
         keras.callbacks.EarlyStopping(monitor="val_loss", patience=5, mode="min")
@@ -128,7 +128,7 @@ plt.show()
 
 # Create sequences from test values.
 x_test = create_sequences(df_test_value.values)
-print("Test input shape: ", x_test.shape)
+print("Test input Data shape: ", x_test.shape)
 
 # Get test MAE loss.
 x_test_pred = model.predict(x_test)
