@@ -37,10 +37,7 @@ def Model_dev(X_train):
 
 def Plot_graph(df, test_score_df, Anomaly):
 
-  fig = go.Figure()
-  fig.add_trace(go.Scatter(x=df['timestamp'], y=df['value'], name='Value'))
-  fig.update_layout(showlegend=True, title='NAB/data/realTwitts/Twitter_volume_AAPL.csv')
-  fig.show()
+  
 
   fig = go.Figure()
   fig.add_trace(go.Scatter(x=test_score_df['timestamp'], y=test_score_df['loss'], name='Test loss'))
@@ -65,6 +62,10 @@ df = df[['timestamp', 'value']]
 df['timestamp'] = pd.to_datetime(df['timestamp'])
 #df['timestamp'].min(), df['timestamp'].max()
 
+fig = go.Figure()
+fig.add_trace(go.Scatter(x=df['timestamp'], y=df['value'], name='Value'))
+fig.update_layout(showlegend=True, title='NAB/data/realTwitts/Twitter_volume_AAPL.csv')
+fig.show()
 #
 
 start, end = Timeset()
@@ -77,7 +78,7 @@ scaler = scaler.fit(train[['value']])
 train['value'] = scaler.transform(train[['value']])
 test['value'] = scaler.transform(test[['value']])
 
-TIME_STEPS=288
+TIME_STEPS=200
 
 def create_sequences(X, y, time_steps=TIME_STEPS):
     Xs, ys = [], []
